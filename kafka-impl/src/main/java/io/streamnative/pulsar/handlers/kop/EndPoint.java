@@ -37,20 +37,24 @@ public class EndPoint {
     @Getter
     private final String originalListener;
     @Getter
+    private final String securityProtocolAlias;
+    @Getter
     private final SecurityProtocol securityProtocol;
     @Getter
     private final String hostname;
     @Getter
     private final int port;
 
-    public EndPoint(final String listener) {
+    public EndPoint(final String listener, final Map<String, SecurityProtocol> protocolMap) {
         this.originalListener = listener;
         final String errorMessage = "listener '" + listener + "' is invalid";
         final Matcher matcher = PATTERN.matcher(listener);
         checkState(matcher.find(), errorMessage);
         checkState(matcher.groupCount() == 3, errorMessage);
 
-        this.securityProtocol = SecurityProtocol.forName(matcher.group(1));
+        this.securityProtocolAlias = matcher.group(1);
+
+        this.securityProtocol = protocolMap.getOrDefault(this.securityProtocolAlias, SecurityProtocol.PLAINTEXT);
         final String originalHostname = matcher.group(2);
         if (originalHostname.isEmpty()) {
             try {
@@ -65,41 +69,60 @@ public class EndPoint {
         checkState(port >= 0 && port <= 65535, errorMessage + ": port " + port + " is invalid");
     }
 
+
+
     public InetSocketAddress getInetAddress() {
         return new InetSocketAddress(hostname, port);
     }
 
-    public static Map<SecurityProtocol, EndPoint> parseListeners(final String listeners) {
-        final Map<SecurityProtocol, EndPoint> endPointMap = new HashMap<>();
+    public static Map<String, EndPoint> parseListeners(final String listeners, final String kafkaProtocolMap) {
+
+        final Map<String, EndPoint> endPointMap = new HashMap<>();
+        final Map<String, SecurityProtocol> protocolMap = parseProtocolMap(kafkaProtocolMap);
         for (String listener : listeners.split(END_POINT_SEPARATOR)) {
-            final EndPoint endPoint = new EndPoint(listener);
-            if (endPointMap.containsKey(endPoint.securityProtocol)) {
+            final EndPoint endPoint = new EndPoint(listener, protocolMap);
+            if (endPointMap.containsKey(endPoint.securityProtocolAlias)) {
                 throw new IllegalStateException(
-                        listeners + " has multiple listeners whose protocol is " + endPoint.securityProtocol);
+                        listeners + " has multiple listeners whose listenerName is " + endPoint.securityProtocolAlias);
             } else {
-                endPointMap.put(endPoint.securityProtocol, endPoint);
+                endPointMap.put(endPoint.securityProtocolAlias, endPoint);
             }
         }
         return endPointMap;
     }
 
-    public static EndPoint getPlainTextEndPoint(final String listeners) {
+    public static EndPoint getPlainTextEndPoint(final String listeners, final Map<String, SecurityProtocol> protocolMap) {
         for (String listener : listeners.split(END_POINT_SEPARATOR)) {
             if (listener.startsWith(SecurityProtocol.PLAINTEXT.name())
                     || listener.startsWith(SecurityProtocol.SASL_PLAINTEXT.name())) {
-                return new EndPoint(listener);
+                return new EndPoint(listener,protocolMap);
             }
         }
         throw new IllegalStateException(listeners + " has no plain text endpoint");
     }
 
-    public static EndPoint getSslEndPoint(final String listeners) {
+    public static EndPoint getSslEndPoint(final String listeners, final Map<String, SecurityProtocol> protocolMap) {
         for (String listener : listeners.split(END_POINT_SEPARATOR)) {
             if (listener.startsWith(SecurityProtocol.SSL.name())
                     || listener.startsWith(SecurityProtocol.SASL_SSL.name())) {
-                return new EndPoint(listener);
+                return new EndPoint(listener,protocolMap);
             }
         }
         throw new IllegalStateException(listeners + " has no ssl endpoint");
+    }
+
+    public static Map<String, SecurityProtocol> parseProtocolMap(final String kafkaProtocolMap) {
+
+        final Map<String, SecurityProtocol> protocolMap = new HashMap<>();
+
+        for (String protocalMap : kafkaProtocolMap.split(",")) {
+            String[] map = protocalMap.split(":");
+            if (map.length != 2) {
+                throw new IllegalStateException(
+                        "wrong format for kafkaProtocolMap " + kafkaProtocolMap);
+            }
+            protocolMap.put(map[0], SecurityProtocol.forName(map[1]));
+        }
+        return protocolMap;
     }
 }

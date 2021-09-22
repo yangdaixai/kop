@@ -271,7 +271,9 @@ public class KafkaProtocolHandler implements ProtocolHandler {
     public void start(BrokerService service) {
         brokerService = service;
         kopBrokerLookupManager = new KopBrokerLookupManager(
-                brokerService.getPulsar(), false, kafkaConfig.getKafkaAdvertisedListeners());
+                brokerService.getPulsar(), false,
+                kafkaConfig.getKafkaAdvertisedListeners(),
+                kafkaConfig.getKafkaProtocolMap());
 
         log.info("Starting KafkaProtocolHandler, kop version is: '{}'", KopVersion.getVersion());
         log.info("Git Revision {}", KopVersion.getGitSha());
@@ -280,7 +282,7 @@ public class KafkaProtocolHandler implements ProtocolHandler {
             KopVersion.getBuildHost(),
             KopVersion.getBuildTime());
 
-        // Currently each time getMetadataCache() is called, a new MetadataCache<T> instance will be created, even for
+        // Currently each  time getMetadataCache() is called, a new MetadataCache<T> instance will be created, even for
         // the same type. So we must reuse the same MetadataCache<LocalBrokerData> to avoid creating a lot of instances.
         localBrokerDataCache = brokerService.pulsar().getLocalMetadataStore().getMetadataCache(LocalBrokerData.class);
 
@@ -375,28 +377,22 @@ public class KafkaProtocolHandler implements ProtocolHandler {
 
         try {
             ImmutableMap.Builder<InetSocketAddress, ChannelInitializer<SocketChannel>> builder =
-                ImmutableMap.<InetSocketAddress, ChannelInitializer<SocketChannel>>builder();
+                    ImmutableMap.<InetSocketAddress, ChannelInitializer<SocketChannel>>builder();
 
-            final Map<SecurityProtocol, EndPoint> advertisedEndpointMap =
-                    EndPoint.parseListeners(kafkaConfig.getKafkaAdvertisedListeners());
-            EndPoint.parseListeners(kafkaConfig.getListeners()).forEach((protocol, endPoint) -> {
-                EndPoint advertisedEndPoint = advertisedEndpointMap.get(protocol);
-                if (advertisedEndPoint == null) {
-                    // Use the bind endpoint as the advertised endpoint.
-                    advertisedEndPoint = endPoint;
-                }
-                switch (protocol) {
+            EndPoint.parseListeners(kafkaConfig.getListeners(), kafkaConfig.getKafkaProtocolMap()).forEach((protocol, endPoint) -> {
+
+                switch (endPoint.getSecurityProtocol()) {
                     case PLAINTEXT:
                     case SASL_PLAINTEXT:
                         builder.put(endPoint.getInetAddress(), new KafkaChannelInitializer(brokerService.getPulsar(),
                                 kafkaConfig, groupCoordinator, transactionCoordinator, adminManager, false,
-                                advertisedEndPoint, rootStatsLogger.scope(SERVER_SCOPE), localBrokerDataCache));
+                                endPoint, rootStatsLogger.scope(SERVER_SCOPE), localBrokerDataCache));
                         break;
                     case SSL:
                     case SASL_SSL:
                         builder.put(endPoint.getInetAddress(), new KafkaChannelInitializer(brokerService.getPulsar(),
                                 kafkaConfig, groupCoordinator, transactionCoordinator, adminManager, true,
-                                advertisedEndPoint, rootStatsLogger.scope(SERVER_SCOPE), localBrokerDataCache));
+                                endPoint, rootStatsLogger.scope(SERVER_SCOPE), localBrokerDataCache));
                         break;
                 }
             });

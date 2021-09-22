@@ -15,9 +15,15 @@ package io.streamnative.pulsar.handlers.kop;
 
 import lombok.extern.slf4j.Slf4j;
 import org.apache.kafka.clients.producer.KafkaProducer;
+import org.apache.kafka.clients.producer.ProducerConfig;
 import org.apache.kafka.clients.producer.ProducerRecord;
+import org.apache.kafka.clients.producer.RecordMetadata;
+import org.apache.kafka.common.serialization.StringSerializer;
 import org.apache.pulsar.broker.ServiceConfigurationUtils;
 import org.testng.annotations.Test;
+
+import java.util.Properties;
+import java.util.concurrent.TimeUnit;
 
 /**
  * Test for kafkaListenerName config.
@@ -60,5 +66,45 @@ public class KafkaListenerNameTest extends KopProtocolHandlerTestBase {
         producer.close();
 
         super.internalCleanup();
+    }
+    @Test(timeOut = 30000)
+    public void testMultipleListenerName() throws Exception {
+        super.resetConfig();
+        conf.setAdvertisedAddress(null);
+        final String localAddress = ServiceConfigurationUtils.getDefaultOrConfiguredAddress(null);
+        conf.setInternalListenerName("pulsar");
+        final String advertisedListeners =
+                "pulsar:pulsar://" + localAddress + ":" + brokerPort;
+
+        conf.setAdvertisedListeners(advertisedListeners);
+        conf.setKafkaProtocolMap("EXTERNAL:PLAINTEXT,INTERNAL:PLAINTEXT");
+        conf.setKafkaListeners(
+                "EXTERNAL"+ "://"+ "localhost:" + 9093 + ","
+                        + "INTERNAL" +"://"+ "localhost:" + 9092);
+        conf.setKafkaAdvertisedListeners("PLAINTEXT://localhost:9092");
+        log.info("Set advertisedListeners to {}", advertisedListeners);
+        super.internalSetup();
+
+        kafkaProducerSend("9093");
+        kafkaProducerSend("9092");
+
+        super.internalCleanup();
+    }
+
+    private void kafkaProducerSend(String port) {
+        final Properties props = new Properties();
+        props.setProperty(ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, "localhost:" + port);
+        props.setProperty(ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG, StringSerializer.class.getName());
+        props.setProperty(ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, StringSerializer.class.getName());
+
+        final KafkaProducer<String, String> producer = new KafkaProducer<>(props);
+        producer.send(new ProducerRecord<>("my-topic", "my-message"), (metadata, exception) -> {
+            if (exception == null) {
+                log.info("Send to {}", metadata);
+            } else {
+                log.error("Send failed: {}", exception.getMessage());
+            }
+        });
+        producer.close();
     }
 }

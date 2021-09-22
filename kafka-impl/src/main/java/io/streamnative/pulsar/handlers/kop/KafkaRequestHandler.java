@@ -202,6 +202,7 @@ public class KafkaRequestHandler extends KafkaCommandDecoder {
     private final MetadataCache<LocalBrokerData> localBrokerDataCache;
 
     private final Boolean tlsEnabled;
+    private final String kafkaProtocolMap;
     private final EndPoint advertisedEndPoint;
     private final String advertisedListeners;
     private final int defaultNumPartitions;
@@ -267,6 +268,7 @@ public class KafkaRequestHandler extends KafkaCommandDecoder {
         this.localBrokerDataCache = localBrokerDataCache;
         this.tlsEnabled = tlsEnabled;
         this.advertisedEndPoint = advertisedEndPoint;
+        this.kafkaProtocolMap = kafkaConfig.getKafkaProtocolMap();
         this.advertisedListeners = kafkaConfig.getKafkaAdvertisedListeners();
         this.topicManager = new KafkaTopicManager(this);
         this.defaultNumPartitions = kafkaConfig.getDefaultNumPartitions();
@@ -2281,8 +2283,8 @@ public class KafkaRequestHandler extends KafkaCommandDecoder {
                     // It's the `kafkaAdvertisedListeners` config that's written to ZK
                     final String listeners = listenersOptional.get();
                     final EndPoint endPoint =
-                            (tlsEnabled ? EndPoint.getSslEndPoint(listeners)
-                                    : EndPoint.getPlainTextEndPoint(listeners));
+                            (tlsEnabled ? EndPoint.getSslEndPoint(listeners, EndPoint.parseProtocolMap(this.kafkaProtocolMap)) :
+                                    EndPoint.getPlainTextEndPoint(listeners,  EndPoint.parseProtocolMap(this.kafkaProtocolMap)));
                     final Node node = newNode(endPoint.getInetAddress());
 
                     if (log.isDebugEnabled()) {

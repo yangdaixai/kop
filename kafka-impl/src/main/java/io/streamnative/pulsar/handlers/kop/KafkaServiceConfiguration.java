@@ -182,6 +182,13 @@ public class KafkaServiceConfiguration extends ServiceConfiguration {
     private String kafkaListeners;
 
     @FieldContext(
+            category = CATEGORY_KOP,
+            doc = "Comma-separated map of listener name and protocol.\n"
+                    + "e.g. PRIVATE:PLAINTEXT,PRIVATE_SSL:SSL,PUBLIC:PLAINTEXT,PUBLIC_SSL:SSL.\n"
+    )
+    private String kafkaProtocolMap = "PLAINTEXT:PLAINTEXT,SSL:SSL,SASL_PLAINTEXT:SASL_PLAINTEXT,SASL_SSL:SASL_SSL";
+
+    @FieldContext(
         category = CATEGORY_KOP,
         doc = "Listeners to publish to ZooKeeper for clients to use.\n"
                 + "The format is the same as `kafkaListeners`.\n"
